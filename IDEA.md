@@ -21,6 +21,7 @@
   },
   "sys": {
     "cpu": "Intel i7-8550U (8) @ 4.000GHz",
+    "uptime": 408013,
     "memory": {
       "total": 7874968,
       "free": 673724,

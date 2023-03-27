@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+LC_ALL=C
+LANG=C
+alias var="local -r "
+
+# some guidelines before contribute
+# 1. only ascii chars)
+# 2. try to write attractive code
+# 3. unsafe in bash is normal
+
+
+# debug var 
+# should enabled only in dev env
+# may cause performance degradation
+declare -rx debug=true
+
+function msg
+{ printf \
+    "%(%H:%M:%S)T [\033[0;92mmsg\033[0m] %s\n" \
+      "-1" "$1"; }
+
+function warn
+{ printf \
+    "%(%H:%M:%S)T [\033[0;93mwarn\033[0m] %s\n" \
+      "-1" "$1"; }
+
+function err
+{ printf \
+    "%(%H:%M:%S)T [\033[0;91merr\033[0m] %s\n" \
+      "-1" "$1"; }
+
+function die
+{ exit 1; }
+
+
+
+# free all resources
+function clean
+{ if
+    $debug; then
+    msg "started cleanup"; fi
+
+  if
+    test -f /tmp/intd.lock; then
+    rm /tmp/intd.lock
+    if 
+      test $? -ne 0; then
+      err "error with lock file deletion"
+      die; fi
+    msg "lock file removed"; fi }
+
+# acquire all resources
+function init
+{ if
+    test "${BASH_VERSION:0:1}" -lt 4; then
+    err "bash version is older than 4.2("
+    die; fi
+
+  if
+    $debug; then
+    warn "PROGRAM RUNNED IN DEBUG MODE!!!"; fi
+  
+  if 
+    test -f /tmp/intd.lock; then
+    err "woow intd daemon already inited. try to stop all processes of intd or remove /tmp/intd.lock"
+    die; fi 
+  
+  trap "clean" EXIT
+
+  if 
+    $debug; then
+    msg "trying to acquire a lock file"; fi 
+
+  touch /tmp/intd.lock
+  if
+    test $? -ne 0; then
+    err "error with lock file creation"
+    die; fi }
+
+
+function main
+{ init
+  msg "deamon started"
+  while
+    true; do
+    sleep 10
+    msg "work"; done }
+
+main "$@"

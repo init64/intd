@@ -6,6 +6,7 @@ mkShell rec {
   packages = [
     bash
     nodePackages_latest.bash-language-server
+    shellcheck
   ];
 
   shellHook = ''
