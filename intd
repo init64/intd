@@ -1,49 +1,112 @@
 #!/usr/bin/env bash
 LC_ALL=C
 LANG=C
-alias var="local -r "
 
 # some guidelines before contribute
 # 1. only ascii chars)
 # 2. try to write attractive code
 # 3. unsafe in bash is normal
 
+# $COLOR for log colors
+# $SERVER is server ip and port for tcp connection
+# $HOST is http host for subdomens and other
+# $HTTP_PATH is path for http request
+# $SLEEP_TIME is a time between requests and data collections
+declare -rx DEBUG=true \
+            COLOR=true \
+            SERVER="127.0.0.1/80" \
+            HOST="127.0.0.1" \
+            HTTP_PATH="/"
+            SLEEP_TIME=5
 
-# debug var 
-# should enabled only in dev env
-# may cause performance degradation
-declare -rx debug=true
+# msg from user for us)
+declare -rx MSG="sfome on the beat"
 
 function msg
-{ printf \
-    "%(%H:%M:%S)T [\033[0;92mmsg\033[0m] %s\n" \
-      "-1" "$1"; }
+{ if
+    $COLOR; then
+    printf \
+      "%(%H:%M:%S)T [\033[0;92mmsg\033[0m] %s\n" \
+        "-1" "$1"
+  else
+    printf \
+      "%(%H:%M:%S)T [msg] %s\n" \
+        "-1" "$1"; fi }
 
 function warn
-{ printf \
-    "%(%H:%M:%S)T [\033[0;93mwarn\033[0m] %s\n" \
-      "-1" "$1"; }
+{ if
+    $COLOR; then 
+    printf \
+      "%(%H:%M:%S)T [\033[0;93mwarn\033[0m] %s\n" \
+        "-1" "$1"
+  else
+    printf \
+      "%(%H:%M:%S)T [warn] %s\n" \
+        "-1" "$1"; fi }
 
 function err
-{ printf \
-    "%(%H:%M:%S)T [\033[0;91merr\033[0m] %s\n" \
-      "-1" "$1"; }
+{ if
+    $COLOR; then
+    printf \
+      "%(%H:%M:%S)T [\033[0;91merr\033[0m] %s\n" \
+        "-1" "$1"
+  else
+    printf \
+      "%(%H:%M:%S)T [err] %s\n" \
+        "-1" "$1"; fi }
 
 function die
 { exit 1; }
 
+# sleep with file descriptor
+# looks funny but works fine
+function read_sleep
+{ read -rt "$1" <> <(:) || :; }
 
+# gen json body with data
+# through printf
+function gen_json
+{ local -n _data=$1
+  printf '{"usr":{"hostname":"%s","username":"%s","msg":"%s","shell":"%s","de":{"wm":"%s","de":"%s"},"distro":{"id":"%s","name":"%s","version":"%s"}},"sys":{"cpu":"%s","kernel":"%s","uptime":%d,"memory":{"total":%d,"free":%d,"available":%d,"swap":{"total":%d,"free":%d}},"disk":{"total":%d,"available":%d}}}' \
+         "${_data[usr_hostname]}" \
+         "${_data[usr_username]}" \
+         "${_data[usr_msg]}" \
+         "${_data[usr_shell]}" \
+         "${_data[usr_de_wm]}" \
+         "${_data[usr_de_de]}" \
+         "${_data[usr_distro_id]}" \
+         "${_data[usr_distro_name]}" \
+         "${_data[usr_distro_version]}" \
+         "${_data[sys_cpu]}" \
+         "${_data[sys_kernel]}" \
+         "${_data[sys_uptime]}" \
+         "${_data[sys_memory_total]}" \
+         "${_data[sys_memory_free]}" \
+         "${_data[sys_memory_available]}" \
+         "${_data[sys_memory_swap_total]}" \
+         "${_data[sys_memory_swap_available]}" \
+         "${_data[sys_memory_disk_total]}" \
+         "${_data[sys_memory_disk_available]}"; }
+
+# send data through http
+# with pure bash tcp stack
+# yeeeeeeeeeeeee
+function send_data
+{ exec 3<>"/dev/tcp/$SERVER"
+
+  # printf "GET / HTTP/1.1\nhost: $HOST\nConnection: close\n\n\n"
+  printf "POST $HTTP_PATH HTTP/1.1\nhost: $HOST\n\n$1\n\n\n" >&3; }
 
 # free all resources
 function clean
 { if
-    $debug; then
+    $DEBUG; then
     msg "started cleanup"; fi
 
   if
     test -f /tmp/intd.lock; then
     rm /tmp/intd.lock
-    if 
+    if
       test $? -ne 0; then
       err "error with lock file deletion"
       die; fi
@@ -55,35 +118,54 @@ function init
     test "${BASH_VERSION:0:1}" -lt 4; then
     err "bash version is older than 4.2("
     die; fi
-
   if
-    $debug; then
+    $DEBUG; then
     warn "PROGRAM RUNNED IN DEBUG MODE!!!"; fi
-  
   if 
     test -f /tmp/intd.lock; then
     err "woow intd daemon already inited. try to stop all processes of intd or remove /tmp/intd.lock"
     die; fi 
-  
+
   trap "clean" EXIT
-
   if 
-    $debug; then
+    $DEBUG; then
     msg "trying to acquire a lock file"; fi 
-
   touch /tmp/intd.lock
   if
     test $? -ne 0; then
-    err "error with lock file creation"
+    err "error with lock file creation. try to check permissions"
     die; fi }
-
 
 function main
 { init
   msg "deamon started"
+
+  local -rA json=(
+    [usr_hostname]="$HOSTNAME"
+    [usr_username]="$USER"
+    [usr_msg]="$MSG"
+    [usr_shell]="$SHELL"
+    [usr_de_wm]="unknown"
+    [usr_de_de]="$DESKTOP_SESSION"
+    [usr_distro_id]=""
+    [usr_distro_name]="unknown"
+    [usr_distro_version]="unknown"
+    [sys_cpu]="unknown"
+    [sys_kernel]="unknown"
+    [sys_uptime]=0
+    [sys_memory_total]=0
+    [sys_memory_free]=0
+    [sys_memory_available]=0
+    [sys_memory_swap_total]=0
+    [sys_memory_swap_available]=0
+    [sys_memory_disk_total]=0
+    [sys_memory_disk_available]=0
+  )
+
+  local -ri mins="$SLEEP_TIME * 60"
   while
     true; do
-    sleep 10
-    msg "work"; done }
+    msg "$(gen_json "json")"
+    read_sleep $mins; done }
 
 main "$@"
