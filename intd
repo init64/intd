@@ -14,46 +14,36 @@ LANG=C
 # $SLEEP_TIME is a time between requests and data collections
 declare -rx DEBUG=true \
             COLOR=true \
-            SERVER="127.0.0.1/80" \
-            HOST="127.0.0.1" \
-            HTTP_PATH="/"
-            SLEEP_TIME=5
+            SERVER="0.0.0.0/8080" \
+            HOST="0.0.0.0" \
+            HTTP_PATH="/asdasdasd"
+            SLEEP_TIME=1
 
 # msg from user for us)
 declare -rx MSG="sfome on the beat"
 
+# all logging in stderr
 function msg
 { if
     $COLOR; then
-    printf \
-      "%(%H:%M:%S)T [\033[0;92mmsg\033[0m] %s\n" \
-        "-1" "$1"
+    printf "%(%H:%M:%S)T [\033[0;92mmsg\033[0m] %s\n" "-1" "$1" 1>&2
   else
-    printf \
-      "%(%H:%M:%S)T [msg] %s\n" \
-        "-1" "$1"; fi }
+    printf "%(%H:%M:%S)T [msg] %s\n" "-1" "$1" 1>&2; fi }
 
 function warn
 { if
     $COLOR; then 
-    printf \
-      "%(%H:%M:%S)T [\033[0;93mwarn\033[0m] %s\n" \
-        "-1" "$1"
+    printf "%(%H:%M:%S)T [\033[0;93mwarn\033[0m] %s\n" "-1" "$1" 1>&2
   else
     printf \
-      "%(%H:%M:%S)T [warn] %s\n" \
-        "-1" "$1"; fi }
+      "%(%H:%M:%S)T [warn] %s\n" "-1" "$1" 1>&2; fi }
 
 function err
 { if
     $COLOR; then
-    printf \
-      "%(%H:%M:%S)T [\033[0;91merr\033[0m] %s\n" \
-        "-1" "$1"
+    printf "%(%H:%M:%S)T [\033[0;91merr\033[0m] %s\n" "-1" "$1" 1>&2
   else
-    printf \
-      "%(%H:%M:%S)T [err] %s\n" \
-        "-1" "$1"; fi }
+    printf "%(%H:%M:%S)T [err] %s\n" "-1" "$1" 1>&2; fi }
 
 function die
 { exit 1; }
@@ -86,16 +76,34 @@ function gen_json
          "${_data[sys_memory_swap_total]}" \
          "${_data[sys_memory_swap_available]}" \
          "${_data[sys_memory_disk_total]}" \
-         "${_data[sys_memory_disk_available]}"; }
+         "${_data[sys_memory_disk_available]}"; 
+  if
+    $DEBUG; then
+    msg "json generated"; fi }
 
 # send data through http
 # with pure bash tcp stack
 # yeeeeeeeeeeeee
 function send_data
-{ exec 3<>"/dev/tcp/$SERVER"
+{ (echo >"/dev/tcp/$SERVER") &> /dev/null
+  if 
+    test $? -ne 0; then
+    err "'/dev/tcp/$SERVER' tcp socket doesnt exist. try to check \$SERVER var for correctnes"
+    return 1; fi
 
-  # printf "GET / HTTP/1.1\nhost: $HOST\nConnection: close\n\n\n"
-  printf "POST $HTTP_PATH HTTP/1.1\nhost: $HOST\n\n$1\n\n\n" >&3; }
+  exec 3>"/dev/tcp/$SERVER"
+  if
+    $DEBUG; then
+    msg "opened tcp connection on '$SERVER'"; fi
+  echo -ne "POST $HTTP_PATH HTTP/1.1\nhost: $HOST\nContent-Length: ${#1}\n\n$1" >&3
+  if
+    $DEBUG; then
+    msg "http POST request sended"; fi
+  cat <&3 &> /dev/null # read some shit from connection before close
+  exec 3>&- # connection closed
+  if 
+    $DEBUG; then
+    msg "'$SERVER' connection closed"; fi }
 
 # free all resources
 function clean
@@ -140,13 +148,14 @@ function main
 { init
   msg "deamon started"
 
+  # idk why shellcheck gives me error on json var
   local -rA json=(
-    [usr_hostname]="$HOSTNAME"
-    [usr_username]="$USER"
-    [usr_msg]="$MSG"
-    [usr_shell]="$SHELL"
+    [usr_hostname]="unknown"
+    [usr_username]="unknown"
+    [usr_msg]="unknown"
+    [usr_shell]="unknown"
     [usr_de_wm]="unknown"
-    [usr_de_de]="$DESKTOP_SESSION"
+    [usr_de_de]="unknown"
     [usr_distro_id]=""
     [usr_distro_name]="unknown"
     [usr_distro_version]="unknown"
@@ -165,7 +174,7 @@ function main
   local -ri mins="$SLEEP_TIME * 60"
   while
     true; do
-    msg "$(gen_json "json")"
+    send_data "$(gen_json "json")"
     read_sleep $mins; done }
 
 main "$@"
